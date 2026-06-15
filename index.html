@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>网友扫雷 · 雷点说明卡</title>
+<style>
+  /* 像素字体（本地引用，离线可用） */
+  @font-face{
+    font-family:'Press Start 2P';
+    src:url('fonts/press-start-2p.woff2') format('woff2');
+    font-display:swap;
+  }
+  @font-face{
+    font-family:'WenQuanYi Song';
+    src:url('fonts/wenquanyi-song-14px.woff2') format('woff2');
+    font-display:swap;
+  }
+  /* Zpix 仅作兜底：文泉驿没有的生僻字才会触发加载 */
+  @font-face{
+    font-family:'Zpix';
+    src:url('fonts/zpix.woff2') format('woff2');
+    font-display:swap;
+  }
+  :root{
+    --gray:#c0c0c0; --white:#ffffff; --dark:#808080; --black:#0a0a0a; --light:#dfdfdf;
+    --navy:#000080; --navy2:#1084d0; --desk:#008080;
+    /* 邻雷数 → 颜色（用户设定：1红 2绿 3蓝 4黄……，调到灰底上可读） */
+    --c0:#404040; --c1:#e60000; --c2:#008000; --c3:#0000e6; --c4:#b8860b;
+    --c5:#800080; --c6:#008080; --c7:#000000; --c8:#555555;
+    --ph:#808080;
+    --cs:28px; /* 格子尺寸，由 JS 计算 */
+  }
+  /* 经典双层立体边框 */
+  .raised{ box-shadow:inset -1px -1px 0 var(--black),inset 1px 1px 0 var(--white),
+           inset -2px -2px 0 var(--dark),inset 2px 2px 0 var(--light); }
+  .sunken{ box-shadow:inset -1px -1px 0 var(--white),inset 1px 1px 0 var(--black),
+           inset -2px -2px 0 var(--light),inset 2px 2px 0 var(--dark); }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--desk);color:var(--black);
+    font-family:'WenQuanYi Song','Zpix','PingFang SC','Microsoft YaHei',monospace;
+    -webkit-font-smoothing:none;font-smooth:never;image-rendering:pixelated;
+    font-synthesis:weight;font-weight:bold;}
+  /* LCD 和数字用 Press Start 2P，保持原样不加粗 */
+  .lcd,.glyph.num{font-weight:normal;font-synthesis:none}
+  body{padding:18px 10px 60px;min-height:100vh}
+
+  .window{max-width:560px;margin:0 auto;background:var(--gray);padding:3px;}
+  .window.raised{ }
+  .titlebar{display:flex;align-items:center;justify-content:space-between;
+    background:linear-gradient(90deg,var(--navy),var(--navy2));color:#fff;
+    padding:3px 4px;margin-bottom:3px;}
+  .tb-title{font-size:12px;letter-spacing:.5px;padding-left:2px}
+  .tb-btns{display:flex;gap:2px}
+  .tb-btns b{display:inline-flex;align-items:center;justify-content:center;
+    width:18px;height:16px;background:var(--gray);color:#000;font-size:9px;
+    font-family:'Press Start 2P',monospace;cursor:default}
+  .win-body{padding:8px}
+
+  h1{font-size:15px;margin:0 0 4px;letter-spacing:1px}
+  .sub{font-size:10px;line-height:1.6;margin:0 0 12px}
+  label{display:block;font-size:11px;margin:0 0 5px}
+  .hint{font-size:9px;color:#444;margin-left:4px}
+  textarea{width:100%;border:none;background:var(--white);padding:7px 8px;
+    font-family:inherit;font-size:13px;line-height:1.5;resize:vertical;color:#000;}
+  textarea:focus{outline:1px dotted #000;outline-offset:-3px}
+
+  /* 经典按钮 */
+  button{font-family:'WenQuanYi Song','Zpix',monospace;font-size:11px;background:var(--gray);
+    color:#000;border:none;padding:5px 10px;cursor:pointer;min-height:26px;
+    -webkit-font-smoothing:none;}
+  button:active{ box-shadow:inset -1px -1px 0 var(--white),inset 1px 1px 0 var(--black),
+                 inset -2px -2px 0 var(--light),inset 2px 2px 0 var(--dark);padding:6px 9px 4px 11px;}
+  button:focus{outline:1px dotted #000;outline-offset:-4px}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .meta{font-size:10px;color:#333;margin-top:8px}
+  .spacer{height:10px}
+
+  /* 控制条 */
+  .controls{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+  .seg{display:inline-flex;align-items:center;gap:0}
+  .seg button.on{ box-shadow:inset -1px -1px 0 var(--white),inset 1px 1px 0 var(--black),
+                  inset -2px -2px 0 var(--light),inset 2px 2px 0 var(--dark);}
+
+  /* LCD 计数条 + 笑脸 */
+  .lcdbar{display:flex;align-items:center;justify-content:space-between;
+    padding:5px 8px;margin-bottom:8px;background:var(--gray);}
+  .lcd{font-family:'Press Start 2P',monospace;background:#000;color:#ff1a1a;
+    font-size:15px;letter-spacing:2px;padding:4px 6px;min-width:54px;text-align:right;
+    border:1px solid var(--dark);text-shadow:0 0 4px rgba(255,0,0,.6)}
+  .smiley{font-size:18px;width:34px;height:34px;padding:0;line-height:1;}
+
+  /* 点击/标旗 切换（手机端主要交互） */
+  .tapbar{display:flex;align-items:center;gap:6px;margin-bottom:8px;justify-content:center}
+  .tapbtn{font-size:13px;padding:7px 14px;min-height:32px}
+  .tapbtn.on{box-shadow:inset -1px -1px 0 var(--white),inset 1px 1px 0 var(--black),
+             inset -2px -2px 0 var(--light),inset 2px 2px 0 var(--dark);background:#d4d0c8}
+
+  /* 雷区 */
+  .field{padding:5px;background:var(--gray);overflow-x:auto;}
+  #board{display:grid;gap:0;touch-action:manipulation;background:var(--dark);margin:0 auto;width:max-content;}
+  .cell{width:var(--cs);height:var(--cs);display:flex;align-items:center;justify-content:center;
+    background:var(--gray);user-select:none;cursor:pointer;overflow:hidden;line-height:1;
+    box-shadow:inset -2px -2px 0 var(--dark),inset 2px 2px 0 var(--white);position:relative;}
+  .cell.open{box-shadow:inset 1px 1px 0 var(--dark);cursor:default;background:#bdbdbd;}
+  .cell.mine{background:#bdbdbd}
+  .cell.boom{background:#ff2a2a}
+  .glyph{font-family:'WenQuanYi Song','Zpix',monospace;font-size:calc(var(--cs)*0.62);font-weight:400;padding:0 1px;}
+  .glyph.num{font-family:'Press Start 2P',monospace;font-size:calc(var(--cs)*0.42);}
+  .glyph.big{font-size:calc(var(--cs)*0.7)}
+
+  /* 通关面板 */
+  #winPanel{margin:10px 0 4px;padding:8px;background:#fffbe6;}
+  #winPanel h2{font-size:12px;margin:0 0 6px;color:#000}
+  #winList{margin:0;padding-left:18px;font-size:12px;line-height:1.7}
+  #winList li{margin:1px 0}
+  .winboom{font-size:10px;color:#a00;margin-top:6px}
+
+  /* 图例 */
+  .legend{display:flex;flex-wrap:wrap;gap:5px 10px;font-size:10px;margin:10px 0 2px}
+  .legend span{display:inline-flex;align-items:center;gap:4px}
+  .sw{width:11px;height:11px;display:inline-block;box-shadow:inset -1px -1px 0 var(--dark),inset 1px 1px 0 var(--white)}
+  details{margin-top:8px} summary{cursor:pointer;font-size:11px}
+  .minelist{margin:6px 0 0;padding-left:18px;font-size:12px;line-height:1.7}
+  .tip{font-size:10px;color:#333;margin-top:10px;line-height:1.6}
+
+  .shared-banner{background:var(--navy);color:#fff;font-size:11px;padding:6px 8px;margin-bottom:8px;text-align:center}
+
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);
+    background:var(--gray);color:#000;padding:8px 14px;font-size:12px;
+    opacity:0;pointer-events:none;transition:.2s;z-index:9;
+    box-shadow:inset -1px -1px 0 var(--black),inset 1px 1px 0 var(--white),inset -2px -2px 0 var(--dark),inset 2px 2px 0 var(--light);}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+<div class="window raised">
+  <div class="titlebar">
+    <span class="tb-title">💣 网友扫雷.exe</span>
+    <span class="tb-btns"><b>_</b><b>口</b><b>×</b></span>
+  </div>
+  <div class="win-body">
+
+    <!-- 编辑区 -->
+    <div id="editor">
+      <h1>网友扫雷</h1>
+      <p class="sub">把你的雷点埋进扫雷图 · 说明文字会变成扫雷提示 · 生成后可分享链接</p>
+      <label>雷点 <span class="hint">一行一个，作为「雷」，例：逆家产品</span></label>
+      <textarea id="mines" class="sunken" rows="4" placeholder="AB&#10;CD&#10;DEF"></textarea>
+      <div class="spacer"></div>
+      <label>说明文字 <span class="hint">作为提示，按邻雷数上色</span></label>
+      <textarea id="notes" class="sunken" rows="3" placeholder="例：同担拒否"></textarea>
+      <div class="row">
+        <button class="raised" id="gen">▶ 生成扫雷图</button>
+        <button class="raised" id="share">🔗 复制分享链接</button>
+      </div>
+      <div class="meta" id="fitInfo"></div>
+    </div>
+
+    <!-- 棋盘区 -->
+    <div id="play" class="hide">
+      <div class="shared-banner hide" id="sharedBanner">你正在看 TA 的雷区 · 想做自己的就点「✨ 我也要做」</div>
+      <div class="controls">
+        <button class="raised" id="reshuffle">↻ 重开</button>
+        <button class="raised" id="revealAll">👁 全部翻开</button>
+        <button class="raised" id="edit">✎ 编辑</button>
+        <button class="raised hide" id="makeMine">✨ 我也要做</button>
+        <span class="seg">
+          <button class="raised on" id="modeText">文字</button>
+          <button class="raised" id="modeNum">数字</button>
+        </span>
+        <button class="raised" id="soundToggle" title="音效开关">🔊</button>
+      </div>
+      <div class="lcdbar sunken">
+        <span class="lcd" id="mineCounter">000</span>
+        <button class="smiley raised" id="smiley">🙂</button>
+        <span class="lcd" id="timer">000</span>
+      </div>
+      <div class="tapbar">
+        <span style="font-size:11px">点击：</span>
+        <button class="raised tapbtn on" id="tapReveal">👆 翻开</button>
+        <button class="raised tapbtn" id="tapFlag">🚩 标旗</button>
+      </div>
+      <div class="field sunken"><div id="board"></div></div>
+
+      <div id="winPanel" class="sunken hide">
+        <h2>🎉 通关！TA 的全部雷点：</h2>
+        <ul id="winList"></ul>
+        <div class="winboom" id="winBoom"></div>
+      </div>
+
+      <div class="legend" id="legend"></div>
+      <details>
+        <summary>雷点清单（剧透）</summary>
+        <ul class="minelist" id="minelist"></ul>
+      </details>
+      <p class="tip">手机：用上方「翻开/标旗」切换点击效果 · 电脑：左键翻开、右键插旗 · 笑脸=重开 · 每次加载都会重新分布</p>
+    </div>
+
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const COUNT_COLORS = ['--c0','--c1','--c2','--c3','--c4','--c5','--c6','--c7','--c8'];
+
+let state = null;
+let numberMode = false;
+let isSharedView = false;     // 是否从别人的链接打开
+let seconds = 0, timerInt = null, timerStarted = false;
+
+/* ---------- 爆炸音效 ----------
+   优先用本地音频文件 sfx/boom.mp3（自己下载放进去），
+   没有文件时回退到 Web Audio 合成的复古爆炸声（零依赖、离线可用）。 */
+let soundOn = true;
+let hasBoomFile = false;
+const boomAudio = new Audio('sfx/boom.mp3');
+boomAudio.preload = 'auto';
+boomAudio.addEventListener('canplaythrough', ()=>{ hasBoomFile = true; }, {once:true});
+boomAudio.addEventListener('error', ()=>{ hasBoomFile = false; }, {once:true});
+
+let audioCtx = null;
+function synthBoom(){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = audioCtx;
+    if(ctx.state === 'suspended') ctx.resume();
+    const now = ctx.currentTime, dur = 0.6;
+    // 白噪声爆破 + 下扫低通
+    const n = ctx.sampleRate * dur;
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for(let i=0;i<n;i++){ d[i] = (Math.random()*2-1) * Math.pow(1 - i/n, 2); }
+    const noise = ctx.createBufferSource(); noise.buffer = buf;
+    const lp = ctx.createBiquadFilter(); lp.type='lowpass';
+    lp.frequency.setValueAtTime(1800, now); lp.frequency.exponentialRampToValueAtTime(120, now+dur);
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.9, now); ng.gain.exponentialRampToValueAtTime(0.001, now+dur);
+    noise.connect(lp); lp.connect(ng); ng.connect(ctx.destination);
+    // 低频"轰"
+    const osc = ctx.createOscillator(); osc.type='sine';
+    osc.frequency.setValueAtTime(140, now); osc.frequency.exponentialRampToValueAtTime(40, now+0.4);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.85, now); og.gain.exponentialRampToValueAtTime(0.001, now+0.5);
+    osc.connect(og); og.connect(ctx.destination);
+    noise.start(now); noise.stop(now+dur);
+    osc.start(now); osc.stop(now+0.5);
+  }catch(e){}
+}
+function playBoom(){
+  if(!soundOn) return;
+  if(hasBoomFile){ try{ boomAudio.currentTime = 0; boomAudio.play(); return; }catch(e){} }
+  synthBoom();
+}
+
+/* ---------- 工具 ---------- */
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), 1800);
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} return a; }
+function splitChars(str){ return Array.from(str.replace(/\s+/g,' ').trim()); }
+function escapeHTML(s){return s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function pad3(n){ const neg=n<0; n=Math.min(999,Math.abs(n)); return (neg?'-':'')+String(n).padStart(neg?2:3,'0'); }
+
+/* ---------- 输入 ---------- */
+function readInputs(){
+  const mines = $('#mines').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const notes = $('#notes').value;
+  return {mines, notes};
+}
+
+/* ---------- 选择棋盘尺寸 ----------
+   ① 至少 8×8 的最小棋盘，保证可玩性；
+   ② 雷越多棋盘越大，控制雷密度(~16%)不至于太挤；
+   ③ 非雷格尽量够放下说明文字(放不下的用经典数字/空白兜底)；
+   取近似正方形的尺寸。 */
+function pickGrid(M, L){
+  const MIN_SIDE = 8, MAX_SIDE = 30, DENSITY = 0.16;
+  const byMin   = MIN_SIDE*MIN_SIDE;        // 最小棋盘
+  const byMines = Math.ceil(M / DENSITY);   // 让雷密度合理
+  const byNotes = M + L;                     // 让所有文字至少有非雷格可放
+  const target  = Math.max(byMin, byMines, byNotes, M+1);
+  let best = null;
+  for(let cols=MIN_SIDE; cols<=MAX_SIDE; cols++){
+    const rows = Math.max(MIN_SIDE, Math.ceil(target/cols));
+    if(rows>MAX_SIDE) continue;
+    const total = rows*cols;
+    if(total - M < 1) continue;
+    const waste = total - target, aspect = Math.abs(cols/rows - 1);
+    const score = waste*1 + aspect*8;        // 更看重接近正方形
+    if(!best || score < best.score) best = {rows, cols, score};
+  }
+  return best || {rows:MAX_SIDE, cols:MAX_SIDE};
+}
+
+/* ---------- 生成棋盘（每次重随） ---------- */
+function build(){
+  const {mines, notes} = readInputs();
+  const chars = splitChars(notes);
+  const M = mines.length;
+  const {rows, cols} = pickGrid(M, chars.length);
+  const N = rows*cols;
+
+  const idx = shuffle([...Array(N).keys()]);
+  const mineSet = new Set(idx.slice(0, Math.min(M, N-1)));
+  const mineNames = shuffle([...mines]);
+
+  const cells = [];
+  for(let i=0;i<N;i++) cells.push({mine:mineSet.has(i),cp:null,count:0,char:null,revealed:false,flagged:false,boom:false});
+  let mi=0; cells.forEach(c=>{ if(c.mine) c.cp = mineNames[mi++] ?? '雷'; });
+
+  const at=(r,c)=>(r>=0&&r<rows&&c>=0&&c<cols)?cells[r*cols+c]:null;
+  for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){
+    const cell=cells[r*cols+c]; if(cell.mine) continue;
+    let n=0; for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++) if(dr||dc){const nb=at(r+dr,c+dc); if(nb&&nb.mine)n++;}
+    cell.count=n;
+  }
+  // 文字优先铺到「数字提示格」(count>0，雷附近)，按阅读顺序逐行从左到右；
+  // 数字格用完仍有剩余文字 → 溢出到「空白格」(count===0)；
+  // 数字格不够文字填 → 留空，显示经典彩色数字；空白格无文字 → 经典灰空白。
+  let ci=0;
+  for(let i=0;i<N && ci<chars.length;i++){ const c=cells[i]; if(!c.mine && c.count>0)  c.char=chars[ci++]; }
+  for(let i=0;i<N && ci<chars.length;i++){ const c=cells[i]; if(!c.mine && c.count===0) c.char=chars[ci++]; }
+
+  state = {rows, cols, cells, mines, notes, won:false};
+  resetTimer();
+  $('#winPanel').classList.add('hide');
+  setSmiley('🙂');
+  render();
+  renderMineList();
+}
+
+/* ---------- 渲染格子 ---------- */
+function paintCell(el, cell){
+  el.className = 'cell';
+  el.innerHTML='';
+  if(cell.flagged && !cell.revealed){ el.innerHTML='<span class="glyph big">🚩</span>'; return; }
+  if(!cell.revealed) return;
+  el.classList.add('open');
+  if(cell.mine){
+    el.classList.add(cell.boom?'boom':'mine');
+    el.innerHTML='<span class="glyph big">💣</span>';
+    el.title = cell.cp || '雷'; return;
+  }
+  const color = `var(${COUNT_COLORS[Math.min(cell.count,8)]})`;
+  let glyph='', isNum=false;
+  if(numberMode){
+    glyph = cell.count===0 ? '' : String(cell.count); isNum = true;       // 数字模式：经典扫雷
+  }else if(cell.char != null){
+    glyph = cell.char;                                                     // 文字格
+  }else if(cell.count>0){
+    glyph = String(cell.count); isNum = true;                             // 没文字的数字格 → 经典彩色数字
+  }                                                                        // count===0 且无文字 → 留空
+  if(glyph!==''){
+    el.innerHTML=`<span class="glyph ${isNum?'num':''}" style="color:${color}">${escapeHTML(glyph)}</span>`;
+  }
+  el.title = `附近 ${cell.count} 个雷`;
+}
+
+function sizeBoard(){
+  if(!state) return;
+  const vw = Math.min(window.innerWidth, 540);
+  const cs = Math.max(20, Math.min(34, Math.floor((vw - 56)/state.cols)));
+  document.documentElement.style.setProperty('--cs', cs+'px');
+}
+function render(){
+  sizeBoard();
+  const board = $('#board');
+  board.style.gridTemplateColumns = `repeat(${state.cols}, var(--cs))`;
+  board.innerHTML='';
+  state.cells.forEach((cell,i)=>{ const el=document.createElement('div'); el.dataset.i=i; paintCell(el,cell); board.appendChild(el); });
+  updateStatus();
+}
+function refreshCell(i){ const el=$(`#board .cell[data-i="${i}"]`); if(el) paintCell(el, state.cells[i]); }
+
+/* ---------- 计时 / 计数 / 笑脸 ---------- */
+function setSmiley(f){ $('#smiley').textContent = f; }
+function resetTimer(){ clearInterval(timerInt); seconds=0; timerStarted=false; $('#timer').textContent='000'; }
+function startTimer(){
+  if(timerStarted) return; timerStarted=true;
+  timerInt = setInterval(()=>{ seconds++; $('#timer').textContent=pad3(seconds); }, 1000);
+}
+function stopTimer(){ clearInterval(timerInt); }
+
+/* ---------- 揭开 ---------- */
+function reveal(i){
+  const cell = state.cells[i];
+  if(state.won || cell.revealed || cell.flagged) return;
+  startTimer();
+  if(cell.mine){
+    cell.revealed=true; cell.boom=true; refreshCell(i);
+    setSmiley('😵');
+    playBoom();
+    toast('💥 踩雷：'+(cell.cp||'雷'));
+    updateStatus();
+    return;
+  }
+  const {rows, cols, cells} = state;
+  const stack=[i];
+  while(stack.length){
+    const k=stack.pop(); const cur=cells[k];
+    if(cur.revealed||cur.flagged||cur.mine) continue;
+    cur.revealed=true; refreshCell(k);
+    if(cur.count===0){
+      const r=(k/cols)|0, c=k%cols;
+      for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++){
+        if(!dr&&!dc) continue; const nr=r+dr,nc=c+dc;
+        if(nr>=0&&nr<rows&&nc>=0&&nc<cols) stack.push(nr*cols+nc);
+      }
+    }
+  }
+  checkWin(); updateStatus();
+}
+function toggleFlag(i){
+  const cell=state.cells[i];
+  if(state.won || cell.revealed) return;
+  cell.flagged=!cell.flagged; refreshCell(i); updateStatus();
+}
+
+/* ---------- 通关：展示所有雷点 ---------- */
+function checkWin(){
+  const allClear = state.cells.every(c=>c.mine||c.revealed);
+  if(allClear && !state.won){
+    state.won=true; stopTimer(); setSmiley('😎');
+    // 翻开所有雷
+    state.cells.forEach((c,i)=>{ if(c.mine && !c.revealed){ c.revealed=true; refreshCell(i);} });
+    showWinPanel();
+    toast('🎉 通关！');
+  }
+}
+function showWinPanel(){
+  const list = $('#winList');
+  list.innerHTML = state.mines.length
+    ? state.mines.map(m=>`<li>💣 ${escapeHTML(m)}</li>`).join('')
+    : '<li>（这张图没有雷点）</li>';
+  const boomed = state.cells.filter(c=>c.mine&&c.boom).length;
+  $('#winBoom').textContent = boomed ? `（过程中踩了 ${boomed} 个，下次小心点～）` : '完美！一个都没踩到 ✨';
+  $('#winPanel').classList.remove('hide');
+}
+
+function updateStatus(){
+  const total = state.mines.length;
+  const flags = state.cells.filter(c=>c.flagged).length;
+  $('#mineCounter').textContent = pad3(total - flags);
+}
+
+/* ---------- 清单 / 图例 ---------- */
+function renderMineList(){
+  $('#minelist').innerHTML = state.mines.length
+    ? state.mines.map(m=>`<li>💣 ${escapeHTML(m)}</li>`).join('')
+    : '<li>（没有填写雷点）</li>';
+}
+function renderLegend(){
+  const labels=['0 安全','1','2','3','4','5','6','7','8'];
+  $('#legend').innerHTML = labels.map((t,n)=>
+    `<span><i class="sw" style="background:var(${COUNT_COLORS[n]})"></i>${t}</span>`).join('');
+}
+
+/* ---------- 分享链接 ---------- */
+function encode(obj){ return btoa(unescape(encodeURIComponent(JSON.stringify(obj)))); }
+function decode(str){ try{ return JSON.parse(decodeURIComponent(escape(atob(str)))); }catch(e){ return null; } }
+function buildShareURL(){
+  const {mines, notes} = readInputs();
+  return location.origin + location.pathname + '#' + encode({m:mines, n:notes});
+}
+function loadFromHash(){
+  const h = location.hash.slice(1); if(!h) return false;
+  const data = decode(h); if(!data) return false;
+  $('#mines').value = (data.m||[]).join('\n');
+  $('#notes').value = data.n||'';
+  return true;
+}
+
+/* ---------- 视图切换 ---------- */
+function showPlay(){ $('#editor').classList.add('hide'); $('#play').classList.remove('hide'); }
+function showEditor(){ $('#play').classList.add('hide'); $('#editor').classList.remove('hide'); }
+function applySharedUI(){
+  // 看别人的图时：隐藏「编辑」，显示「我也要做」+ 顶部提示
+  $('#edit').classList.toggle('hide', isSharedView);
+  $('#makeMine').classList.toggle('hide', !isSharedView);
+  $('#sharedBanner').classList.toggle('hide', !isSharedView);
+}
+
+function generate(){
+  const {mines, notes} = readInputs();
+  if(!mines.length && !notes.trim()){ toast('先填点雷点或说明文字吧'); return; }
+  build();
+  const filled = state.cells.filter(c=>c.char!=null).length;
+  const chs = splitChars(state.notes).length;
+  $('#fitInfo').textContent = `${state.rows}×${state.cols} · ${state.mines.length}雷 · 文字铺了${filled}字`
+    + (chs>filled ? `（${chs-filled}字放不下）` : '');
+  applySharedUI();
+  showPlay();
+}
+
+/* ---------- 事件 ---------- */
+$('#gen').addEventListener('click', generate);
+$('#reshuffle').addEventListener('click', build);
+$('#smiley').addEventListener('click', build);
+$('#revealAll').addEventListener('click', ()=>{
+  stopTimer();
+  state.cells.forEach((c,i)=>{ if(!c.revealed){ c.revealed=true; refreshCell(i);} });
+  updateStatus();
+});
+$('#edit').addEventListener('click', showEditor);
+$('#makeMine').addEventListener('click', ()=>{
+  // 清空，从空白开始做自己的
+  isSharedView = false;
+  history.replaceState(null,'',location.pathname);
+  $('#mines').value=''; $('#notes').value=''; $('#fitInfo').textContent='';
+  applySharedUI();
+  showEditor();
+  toast('轮到你了！填上自己的雷点吧');
+});
+function setMode(num){
+  numberMode = num;
+  $('#modeNum').classList.toggle('on', num);
+  $('#modeText').classList.toggle('on', !num);
+  if(state) render();
+}
+$('#modeText').addEventListener('click', ()=>setMode(false));
+$('#modeNum').addEventListener('click', ()=>setMode(true));
+// 点击/标旗 切换
+let flagMode = false;
+function setTap(flag){
+  flagMode = flag;
+  $('#tapFlag').classList.toggle('on', flag);
+  $('#tapReveal').classList.toggle('on', !flag);
+}
+$('#tapReveal').addEventListener('click', ()=>setTap(false));
+$('#tapFlag').addEventListener('click', ()=>setTap(true));
+$('#soundToggle').addEventListener('click', ()=>{
+  soundOn = !soundOn;
+  $('#soundToggle').textContent = soundOn ? '🔊' : '🔇';
+  if(soundOn) playBoom(); // 开启时试听一下
+});
+$('#share').addEventListener('click', async ()=>{
+  const url = buildShareURL();
+  history.replaceState(null,'','#'+url.split('#')[1]);
+  try{ await navigator.clipboard.writeText(url); toast('🔗 链接已复制，发给网友吧'); }
+  catch(e){ prompt('复制这个链接分享：', url); }
+});
+
+/* 棋盘交互 */
+const board = $('#board');
+board.addEventListener('click', e=>{
+  if(longPressed){ longPressed=false; return; }
+  const el=e.target.closest('.cell'); if(!el) return;
+  const i = +el.dataset.i;
+  if(flagMode) toggleFlag(i); else reveal(i);   // 跟随「点击：翻开/标旗」
+});
+board.addEventListener('contextmenu', e=>{
+  const el=e.target.closest('.cell'); if(!el) return; e.preventDefault(); toggleFlag(+el.dataset.i);
+});
+let pressTimer=null, longPressed=false;
+board.addEventListener('touchstart', e=>{
+  const el=e.target.closest('.cell'); if(!el) return; longPressed=false;
+  pressTimer=setTimeout(()=>{ longPressed=true; toggleFlag(+el.dataset.i); if(navigator.vibrate) navigator.vibrate(15); }, 380);
+},{passive:true});
+board.addEventListener('touchend', e=>{ clearTimeout(pressTimer); if(longPressed) e.preventDefault(); });
+board.addEventListener('touchmove', ()=>clearTimeout(pressTimer), {passive:true});
+window.addEventListener('resize', ()=>{ if(state){ sizeBoard(); board.style.gridTemplateColumns=`repeat(${state.cols}, var(--cs))`; } });
+
+/* 初始化 */
+renderLegend();
+if(loadFromHash()){ isSharedView = true; generate(); }
+</script>
+</body>
+</html>
